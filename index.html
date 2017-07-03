@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html>
+<!--input type="file" id="text"-->
+	<head>
+        <link rel="stylesheet" href="styles.css">
+        <script type="text/javascript" src="bower_components/paper/dist/paper-full.min.js"></script>
+        <script type="text/javascript" src="node_modules/tone/build/Tone.js"></script>
+         <script type="text/javascript" src="node_modules/fraction.js/fraction.js"></script>
+
+        <script type="text/javascript" src="scripts.js"></script>
+
+        <script type="text/paperscript"  canvas="myCanvas"> 
+
+
+
+
+        function DEvent(sender) {
+            this._sender = sender;
+            this._listeners = [];
+        };
+
+        DEvent.prototype = {
+            attach: function (listener) {
+                this._listeners.push(listener);
+            },
+            notify: function (args) {
+                var index;
+
+                for (index = 0; index < this._listeners.length; index += 1) {
+                    this._listeners[index](this._sender, args);
+                }
+            }
+        };
+
+            var Interval = function(value,conv,style){
+                this.conv = conv;
+                this.line.style = {
+                    strokeWidth : 1,
+                    strokeColor : new Color(128/255,98/255,62/255),
+                    dashArray : [20,3],
+                }
+                if(style){
+                    for(styleString in style)
+                        this.line.style[styleString] = style[styleString];
+                }
+                var fraction = new Fraction(value);
+                var maxF = conv.maxFrequency;
+                var minF = conv.baseFrequency;
+
+                var k = fraction.toNumber();
+                var bc1 = [conv.f2bcModule(maxF*k),conv.f2bcModule(maxF)];
+                //var bc2 = [conv.f2bcModule(maxF),conv.f2bcModule(maxF/k)];
+
+                var bnil1 = [conv.f2bcModule(minF),conv.f2bcModule(minF/k)];
+                //var bnil2 = [conv.f2bcModule(minF),conv.f2bcModule(minF/k)];
+
+                this.line(bnil1,bc1);
+                //this.line(bnil2,bc2);
+
+            }
+
+            Interval.prototype.line = function(bnil,bc){
+                var c = this.conv.bc2c(bc);
+                var nil = this.conv.bc2c(bnil);
+                var line = new Path.Line(nil,c);
+                line.locked = true;
+                line.style = this.line.style;
+
+                return line;
+            }
+
+
+            var Dichord = function(sound1, sound2, conv){
+                var self = this;
+                self.conv = conv;
+
+                self.style = {showString:false,
+                              showMode:'d1quadrant1point'};
+
+
+                //self.cir.bind(self);
+                var f1 = sound1.oscillator.frequency.value;
+                var f2 = sound2.oscillator.frequency.value;
+
+                var bc1 = (conv.f2bcModule(f1));
+                var bc2 = (conv.f2bcModule(f2));
+
+                //var showStrategy = self.DichordDraw1quadrant2point;
+
+                //if(!showStrategy)
+
+                var showStyleEn = {
+                    'd1quadrant1point': self.DichordDraw1quadrant1point.bind(self),
+                    'd1quadrant2point': self.DichordDraw1quadrant2point.bind(self),
+                    'd4quadrant2point': self.DichordDraw4quadrant2point.bind(self)
+                }
+
+                var activeStrategyResult = showStyleEn[self.style.showMode](bc1,bc2);
+                view.update();                    
+
+                function removeCirs(){
+                    //console.log(activeStrategyResult);
+                    activeStrategyResult.forEach(function(shape){
+                        shape.remove();
+                    });
+                    view.update();                    
+                }
+
+                sound1.onStop.attach(removeCirs);
+                sound2.onStop.attach(removeCirs);
+            }
+
+            Dichord.prototype.cir = function(bc){
+                var self = this;
+                function drawCir(bc){
+                    var c = self.conv.bc2c(bc);
+                    var shape = new Shape.Circle(c, 3);
+                    shape.strokeWidth = 0;
+                    shape.fillColor = new Color(45/255, 15/255, 16/255);
+                    return shape;
+                }
+
+                function drawSting(bc,bcFix){
+                    var cCir = self.conv.bc2c(bc);
+                    var cFix = self.conv.bc2c(bcFix);
+                    //var cStringCenter = this.conv.bc2c([bc[0],bc[1]/2]);
+                    /*
+                    var angle = bcFix.getDirectedAngle(new Point([0,-1]));
+                    var cHandleCir = self.conv.bc2cVector({length:rad,
+                                                            angle:-angle});
+                    var cHandleFix = self.conv.bc2cVector({length:rad,
+                                                            angle:-angle});*/
+                    var cHandleCir =  cFix - cCir;
+                    var cHandleFix = -cHandleCir;
+
+                    var rad = cHandleCir.length/3;
+                    
+                     cHandleCir.normalize(rad);
+                     cHandleFix.normalize(rad);
+
+
+                    var segment1=new Segment(cFix,null,cHandleFix);
+                    var segment2=new Segment(cCir,cHandleCir,null);
+
+
+                    //console.log(cStringFix );
+                    //console.log(cStringCenter);
+                    //console.log(c);
+                    var string = new Path(segment1,segment2);
+                    var conv = self.conv;
+                    string.strokeWidth = 1;
+                    string.strokeColor = new Color(117/255, 99/255, 71/255);
+                    string.locked = true;
+                    var angle = 0;
+                    var maxAngle = cHandleCir.length/200;
+                    var startingAngle1 = cHandleCir.angle;
+                    var startingAngle2 = cHandleFix.angle;
+                    string.onFrame = function(event){
+                        //console.log(this.segments[1].handleIn.angle+=Math.cos(angle));
+                        this.segments[1].handleIn.angle=startingAngle1 + Math.sin(angle)*maxAngle;
+                        this.segments[1].handleIn.length=rad;
+                        this.segments[0].handleOut.angle= startingAngle2 + Math.cos(angle)*maxAngle;
+                        this.segments[0].handleOut.length=rad;
+                        angle+=Math.PI/3;
+                    };
+                    return string;
+
+                }
+                var bcFixY = new Point([bc[0],0]);
+                var bcFixX = new Point([0,bc[1]]);
+
+                var dotAndString = new Group([drawCir(bc)]);
+                if(self.style.showString) {
+                    dotAndString.addChild(drawSting(bc,bcFixY));
+                    dotAndString.addChild(drawSting(bc,bcFixX));
+                   }
+                return dotAndString;
+                }
+
+            Dichord.prototype.DichordDraw1quadrant1point = function(bc1,bc2){
+                var bc = [bc1,bc2];
+                bc.sort(function(a, b) {
+                  return a - b;
+                });                    
+                return [this.cir(bc)];
+            }   
+
+            Dichord.prototype.DichordDraw1quadrant2point = function(bc1,bc2){                
+                return [this.cir([bc1,bc2]),
+                        this.cir([bc2,bc1])];
+            } 
+
+            Dichord.prototype.DichordDraw4quadrant2point = function(bc1,bc2){                
+                return         [this.cir([ bc1, bc2]),
+                                this.cir([ bc2, bc1]),
+                                this.cir([ bc1,-bc2]),
+                                this.cir([ bc2,-bc1]),
+                                this.cir([-bc1, bc2]),
+                                this.cir([-bc2, bc1]),
+                                this.cir([-bc1,-bc2]),
+                                this.cir([-bc2,-bc1]),
+                                ];
+            }  
+
+
+            var ToneKey = function(sound,conv){
+                var f = sound.oscillator.frequency.value;
+                var bc = (conv.f2bcModule(f));
+                var widthOfRect = 10;
+                var heightOfRect = 20;
+
+                var c1 = conv.bc2c([bc - widthOfRect/2, - heightOfRect/2]);
+                var c2 = conv.bc2c([-heightOfRect/2,bc - widthOfRect/2]);
+                var shape1 = new Shape.Rectangle(c1, new Size(widthOfRect,heightOfRect));
+                var shape2 = new Shape.Rectangle(c2, new Size(heightOfRect,widthOfRect));
+
+                shape1.rotate(conv.bc2cMatrix.rotation,c1);
+                shape2.rotate(conv.bc2cMatrix.rotation,c2);
+
+                shape1.strokeWidth = 2;
+                shape1.fillColor=new Color(252/255, 223/255, 194/255);
+                shape2.strokeWidth = 2;
+                shape2.fillColor=new Color(252/255, 223/255, 194/255);
+
+                sound.onStop.attach(function(){
+                    shape1.remove(); 
+                    shape2.remove(); 
+
+                    view.update();
+                });
+                //shape.fillColor = new Color(85/255, 68/255, 58/255);
+            } 
+
+            ToneKey.prototype.key = function(bc){
+                /*var c1 = conv.bc2c([bc - widthOfRect/2,0]);
+                var c2 = conv.bc2c([0,bc-widthOfRect/2]);
+                var shape1 = new Shape.Rectangle(c1, new Size(widthOfRect,heightOfRect));
+                var shape2 = new Shape.Rectangle(c2, new Size(heightOfRect,widthOfRect));
+
+                shape1.rotate(conv.bc2cMatrix.rotation,c1);
+                shape2.rotate(conv.bc2cMatrix.rotation,c2);
+
+                shape1.strokeWidth = 2;
+                shape1.fillColor=new Color(252/255, 223/255, 194/255);*/
+            }
+
+            // Frequency to board coordinates
+            // Board coordinates to normal coordinates
+            var Conversion = function(size, base, angle, baseFrequency, maxFrequency){
+
+                this._size = size;
+                this.updateMatrices(angle,base);
+
+                this.baseFrequency = baseFrequency;
+                this.maxFrequency = maxFrequency;
+                //this.deltaFrequency = maxFrequency - baseFrequency;
+            }
+
+
+            Conversion.prototype.deltaFrequency= function(){
+                return this.maxFrequency - this.baseFrequency;
+            }
+
+            Conversion.prototype.updateMatrices= function(angle,base){
+                var basePoint = new Point(base);
+                this.c2bcMatrix = new Matrix();//( Math.cos(angle),-Math.sin(angle), 
+                this.c2bcMatrix.rotate(angle,0,0);                             //Math.sin(angle), Math.cos(angle), base.x, base.y);
+                this.c2bcMatrix.translate(-basePoint.x, -basePoint.y);
+                this.bc2cMatrix = this.c2bcMatrix.inverted();
+            }            
+
+            Conversion.prototype.c2bc = function(point){
+                var pointToBeTransformed = new Point(point);
+                return pointToBeTransformed.transform(this.c2bcMatrix);
+            }
+
+            Conversion.prototype.c2bcVector = function(point){
+                var pointToBeTransformed = new Point(point);
+                return pointToBeTransformed.rotate(this.c2bcMatrix.rotation);
+            }
+ 
+            Conversion.prototype.bc2c = function(point){
+                var pointToBeTransformed = new Point(point);
+                return pointToBeTransformed.transform(this.bc2cMatrix);
+            }
+            Conversion.prototype.bc2cVector = function(point){
+                var pointToBeTransformed = new Point(point);
+                return pointToBeTransformed.rotate(this.bc2cMatrix.rotation);
+            }
+
+            Conversion.prototype.bc2f = function(length){
+
+                if (length > this._size) throw new Error("Trying to convert board coordinates that are out of bounds: " + length);
+
+                var scale = this.deltaFrequency() / this._size;
+                return Math.abs(length) * scale + this.baseFrequency;
+            }
+
+            Conversion.prototype.f2bcModule = function(freq){
+
+                if (freq > this.maxFrequency || freq < this.baseFrequency) throw new Error("Trying to convert frequency that is out of bounds: " + freq);
+                var scale =  this._size / this.deltaFrequency();
+                return (freq - this.baseFrequency) * scale;               
+            }
+
+            //Conversion.
+
+
+            var Board = function(in_size,in_base,in_angle,baseFrequency,maxFrequency){
+
+                //this.size = in_size;
+                //this.base = in_base;
+                //this.angle = in_angle;
+
+                var self = this;
+                this.activeSounds = [];
+                this.conv = new Conversion(in_size,in_base,in_angle,baseFrequency,maxFrequency);
+
+                var max = this.conv.bc2c([0,in_size]);
+                var nil = this.conv.bc2c([0,0]);
+                var max2 = this.conv.bc2c([in_size,0]);
+                var opposite = this.conv.bc2c([in_size,in_size]);
+
+                var base = new Path();
+                base.moveTo(max);
+                base.lineTo(nil);
+                base.lineTo(max2);
+                base.strokeWidth = 10;
+                base.strokeColor = new Color(73/255,37/255,25/255);
+
+                var rect = new Path(max,max2);
+                //rect.strokeColor = new Color(73/255,37/255,25/255);
+               var rect = new Path();
+                rect.moveTo(max);
+                rect.lineTo(nil);
+                rect.lineTo(max2);
+                rect.lineTo(opposite);
+                rect.closePath(false);
+                rect.fillColor = new Color(198/255,162/255,120/255);
+                rect.sendToBack();
+
+
+                this.clicked = new DEvent(this);
+                rect.on('click',function(event){
+                                var inEvent = event;
+                                self.clicked.notify(inEvent);
+                            });
+
+                var string = new Path.Line(nil,this.conv.bc2c([in_size,in_size]));
+                //string
+                string.strokeWidth = 1;
+                string.strokeColor = new Color(200/255, 90/255, 40/255);
+
+                var b = new Interval([2,3],this.conv);
+                var c = new Interval([3,4],this.conv);
+                var d = new Interval([1,2],this.conv,{strokeColor : new Color(55/255,19/255,17/255)});
+                var e = new Interval([8,9],this.conv);
+                var f = new Interval([1,4],this.conv,{strokeColor : new Color(55/255,19/255,17/255)});
+                var f = new Interval([1,3],this.conv,{strokeColor : new Color(55/255,19/255,17/255)});
+                var f = new Interval([1,8],this.conv,{strokeColor : new Color(55/255,19/255,17/255)});
+
+
+                                var decorCir = new Shape.Circle(nil,in_size/10)
+                decorCir.fillColor = new Color(51/255, 45/255, 14/255);
+                decorCir.bringToFront();
+
+            }
+
+
+            Board.prototype.attachSound = function(sound){
+
+                var activeSounds = this.activeSounds;
+                var conv = this.conv;
+
+                sound.onStart.attach(function(){
+                        activeSounds.push(sound);
+                        activeSounds.sort(function(sound1,sound2){
+                            return sound2.oscillator.frequency.value - sound1.oscillator.frequency.value;
+                        });
+                        var key = new ToneKey(sound,conv);
+                        for (var i = activeSounds.length - 1; i >= 0; i--) {
+
+                            if (activeSounds[i] !== sound){
+                                var dichord = new Dichord(activeSounds[i],sound, conv);
+                            }
+
+                        }
+                });
+
+                sound.onStop.attach(function () {
+                    var index = activeSounds.indexOf(sound);
+                    if (index > -1) {
+                        activeSounds.splice(index, 1);
+                    }
+
+                });
+
+
+            }
+
+            var DichordPlayer = function(board){
+                var toneSettings = {"oscillator" : {
+                                        "type":"square"},
+                                    "envelope" : {
+                                        "attack" : 0.01,
+                                        "decay" : 0.001,
+                                        "sustain" : 0.05,
+                                        "release" : 1.2
+                                        }
+                                    };
+                board.clicked.attach(function(board,event){
+                    var c = event.point;
+                    var bc = board.conv.c2bc(c);
+                    var f1 = board.conv.bc2f(bc.y);
+                    var f2 = board.conv.bc2f(bc.x);
+                    toneSettings.oscillator.frequency = f1;
+                    var a = new Tone.Sound(0, 5,toneSettings);
+
+                    toneSettings.oscillator.frequency = f2;
+                    var b = new Tone.Sound(0, 5,toneSettings);
+                    board.attachSound(a);
+                    board.attachSound(b);
+                });
+
+            }
+
+            Tone.Transport.start();
+            var minSize = Math.min(view.size.width,view.size.height);
+            var mainBoard = new Board(minSize,[500,minSize/2],45,1,660);
+            var dichordPlayer = new DichordPlayer(mainBoard);
+
+
+
+        </script>
+    </head>
+    <body>
+        <canvas id="myCanvas" resize></canvas>
+    </body>
+</html>

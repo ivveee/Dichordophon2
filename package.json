@@ -1,0 +1,11 @@
+{
+  "name": "dichordophon",
+  "version": "0.0.1",
+  "author": "Ivan Bichenko <iam@stfoo.ru>",
+  "private": true,
+  "devDependencies": {
+    "gulp": "^3.8.10",
+    "tone": "0.3.0",
+    "fraction.js":"^1.6.0"
+  }
+}
